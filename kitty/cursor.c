@@ -46,6 +46,46 @@ cursor_reset_display_attrs(Cursor *self) {
 }
 
 
+typedef struct { float r, g, b; } RetRgb;
+
+float linear_sRGB(float c) {
+	if (c <= 0.04045)
+		return c / 12.92;
+	else
+		return pow((c + 0.055) / 1.055, 2.4);
+}
+RetRgb sRGB_to_XYZn(float r, float g, float b) {
+	float Rlin = linear_sRGB(r / 255.0);
+	float Glin = linear_sRGB(g / 255.0);
+	float Blin = linear_sRGB(b / 255.0);
+	float Xn = Rlin * 0.4124 + Glin * 0.3576 + Blin * 0.1805;
+	float Yn = Rlin * 0.2126 + Glin * 0.7152 + Blin * 0.0722;
+	float Zn = Rlin * 0.0193 + Glin * 0.1192 + Blin * 0.9505;
+	RetRgb ret;
+	ret.r = Xn;
+	ret.g = Yn;
+	ret.b = Zn;
+	return ret;
+}
+float gamma_AdobeRGB(float c) {
+	if (c <= 0.0)
+		return 0.0;
+	return pow(c, 1/2.19921875);
+}
+RetRgb XYZn_to_AdobeRGB(float Xn, float Yn, float Zn) {
+	float Rlin = Xn * 2.04159 + Yn *-0.56501 + Zn *-0.34473;
+	float Glin = Xn *-0.96924 + Yn * 1.87597 + Zn * 0.04156;
+	float Blin = Xn * 0.01344 + Yn *-0.11836 + Zn * 1.01517;
+	float R = round(255 * gamma_AdobeRGB(Rlin));
+	float G = round(255 * gamma_AdobeRGB(Glin));
+	float B = round(255 * gamma_AdobeRGB(Blin));
+	RetRgb ret;
+	ret.r = R;
+	ret.g = G;
+	ret.b = B;
+	return ret;
+}
+
 static inline void
 parse_color(int *params, unsigned int *i, unsigned int count, uint32_t *result) {
     unsigned int attr;
@@ -64,6 +104,11 @@ parse_color(int *params, unsigned int *i, unsigned int count, uint32_t *result) 
                     r = params[(*i)++] & 0xFF;
                     g = params[(*i)++] & 0xFF;
                     b = params[(*i)++] & 0xFF;
+                    RetRgb xyz = sRGB_to_XYZn((float)r, (float)g, (float)b);
+                    RetRgb srgb = XYZn_to_AdobeRGB(xyz.r, xyz.g, xyz.b);
+                    r = (int)srgb.r;
+                    g = (int)srgb.g;
+                    b = (int)srgb.b;
                     *result = r << 24 | g << 16 | b << 8 | 2;
                 }
                 break;

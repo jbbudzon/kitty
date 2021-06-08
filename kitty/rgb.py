@@ -4,7 +4,7 @@
 
 import re
 from contextlib import suppress
-from typing import Optional, NamedTuple
+from typing import Optional, NamedTuple, Tuple
 
 
 class Color(NamedTuple):
@@ -44,12 +44,57 @@ def parse_single_color(c: str) -> int:
     return int(c[:2], 16)
 
 
+# color space stuff {{{
+import fileinput
+
+def linear_sRGB(c) -> float:
+    if c <= 0.04045:
+        return c / 12.92
+    else:
+        return pow((c + 0.055) / 1.055, 2.4)
+
+def sRGB_to_XYZn(r, g, b) -> Tuple[float,float,float]:
+    Rlin = linear_sRGB(r / 255.0)
+    Glin = linear_sRGB(g / 255.0)
+    Blin = linear_sRGB(b / 255.0)
+    Xn = Rlin * 0.4124 + Glin * 0.3576 + Blin * 0.1805
+    Yn = Rlin * 0.2126 + Glin * 0.7152 + Blin * 0.0722
+    Zn = Rlin * 0.0193 + Glin * 0.1192 + Blin * 0.9505
+    return Xn, Yn, Zn
+
+def gamma_AdobeRGB(c) -> float:
+    if c <= 0.0:
+        return 0.0
+    return pow(c, 1/2.19921875)
+
+def XYZn_to_AdobeRGB(Xn, Yn, Zn) -> Tuple[float,float,float]:
+    Rlin = Xn * 2.04159 + Yn *-0.56501 + Zn *-0.34473
+    Glin = Xn *-0.96924 + Yn * 1.87597 + Zn * 0.04156
+    Blin = Xn * 0.01344 + Yn *-0.11836 + Zn * 1.01517
+    R = round(255 * gamma_AdobeRGB(Rlin))
+    G = round(255 * gamma_AdobeRGB(Glin))
+    B = round(255 * gamma_AdobeRGB(Blin))
+    return R, G, B
+# }}}
+
+
 def parse_sharp(spec: str) -> Optional[Color]:
     if len(spec) in (3, 6, 9, 12):
         part_len = len(spec) // 3
         colors = re.findall(r'[a-fA-F0-9]{%d}' % part_len, spec)
         return Color(*map(parse_single_color, colors))
     return None
+
+
+def parse_sharp_srgb(spec) -> Color:
+    if len(spec) in (3, 6, 9, 12):
+        part_len = len(spec) // 3
+        colors = re.findall(r'[a-fA-F0-9]{%d}' % part_len, spec)
+        c = Color(*map(parse_single_color, colors))
+        x, y, z = sRGB_to_XYZn(c.red, c.green, c.blue)
+        r, g, b = XYZn_to_AdobeRGB(x,y,z)
+        ret = Color(r, g, b)
+        return ret
 
 
 def parse_rgb(spec: str) -> Optional[Color]:
@@ -85,6 +130,22 @@ def to_color(raw: str, validate: bool = False) -> Optional[Color]:
     with suppress(Exception):
         if raw.startswith('#'):
             val = parse_sharp(raw[1:])
+        elif raw[:4].lower() == 'rgb:':
+            val = parse_rgb(raw[4:])
+    if val is None and validate:
+        raise ValueError('Invalid color name: {}'.format(raw))
+    return val
+
+
+def to_color_srgb(raw, validate=False):
+    x = raw.strip().lower()
+    ans = color_names.get(x)
+    if ans is not None:
+        return ans
+    val = None
+    with suppress(Exception):
+        if raw.startswith('#'):
+            val = parse_sharp_srgb(raw[1:])
         elif raw[:4].lower() == 'rgb:':
             val = parse_rgb(raw[4:])
     if val is None and validate:

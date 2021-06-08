@@ -10,7 +10,7 @@ from typing import (
     Sequence, Set, Tuple, TypeVar, Union
 )
 
-from ..rgb import Color, to_color as as_color
+from ..rgb import Color, to_color as as_color, to_color_srgb as as_color_srgb
 from ..types import ConvertibleToNumbers, ParsedShortcut
 from ..typing import Protocol
 from ..utils import expandvars, log_error
@@ -45,6 +45,10 @@ def to_color(x: str) -> Color:
     if ans is None:  # this is only for type-checking
         ans = Color(0, 0, 0)
     return ans
+
+
+def to_color_srgb(x) -> Color:
+    return as_color_srgb(x, validate=True)
 
 
 def to_color_or_none(x: str) -> Optional[Color]:
